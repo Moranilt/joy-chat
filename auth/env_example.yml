@@ -1,0 +1,20 @@
+# You need to set ENV variables in your CI
+# This file is only for local development
+consul:
+  host: localhost:8500
+  key:
+    folder: authentication
+    version: v1.0.0
+    file: config.yaml
+vault:
+  scheme: http
+  host: localhost:8200
+  token: myroot
+  mount_path: secret
+  key:
+    public_path: crt/auth/public
+    private_path: crt/auth/private
+    version: 1
+# if generate_rsa_keys equals TRUE, you should increase key version
+generate_rsa_keys: true
+port: 8081

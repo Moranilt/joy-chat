@@ -1,0 +1,7 @@
+db:
+  port: 5433
+  host: localhost
+  password: 123456
+  user: root
+  sslmode: disable
+  dbname: joy_users

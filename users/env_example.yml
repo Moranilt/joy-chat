@@ -1,0 +1,14 @@
+vault:
+  scheme: http
+  host: localhost:8200
+  token: users-token
+  mount_path: secret
+  public_key_path: crt/auth/public
+port: 8082
+auth_host: http://localhost:8081
+consul:
+  host: localhost:8500
+  key:
+    folder: users
+    version: v1.0.0
+    file: config.yaml

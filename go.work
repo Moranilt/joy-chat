@@ -1,0 +1,6 @@
+go 1.20
+
+use ./chat
+use ./auth
+use ./auth/client
+use ./users

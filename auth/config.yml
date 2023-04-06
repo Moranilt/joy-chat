@@ -1,0 +1,14 @@
+redis:
+  port: 6379
+  host: localhost
+  password: ""
+  db: 0
+jwt:
+  issuer: joy-chat-authentication
+  subject: user
+  audience:
+    - http://localhost:8080
+    - http://localhost:8000
+  ttl:
+    access: 15m
+    refresh: 7d

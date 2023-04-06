@@ -1,0 +1,88 @@
+services:
+  db-chats:
+    image: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./init/sql/chats:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=123456
+      - POSTGRES_DB=joy_chat
+
+  db-users:
+    image: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./init/sql/users:/docker-entrypoint-initdb.d
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=123456
+      - POSTGRES_DB=joy_users
+
+  redis:
+    image: redis
+    ports:
+      - "6379:6379"
+    environment:
+      REDIS_PASSWORD: 1234
+
+  consul:
+    image: consul
+    ports:
+      - "8300:8300"
+      - "8500:8500"
+      - "8600:8600/udp"
+    volumes:
+      - ./auth/config.yml:/configs/auth_config.yml
+      - ./users/config.yml:/configs/users_config.yml
+      - ./init/consul:/consul/config
+    networks:
+      - consul_init
+  
+  consul_init:
+    image: consul
+    entrypoint: sh -c "consul kv put -http-addr=http://consul:8500 authentication/v1.0.0/config.yaml @/configs/auth_config.yml && consul kv put -http-addr=http://consul:8500 users/v1.0.0/config.yaml @/configs/users_config.yml"
+    volumes:
+      - ./auth/config.yml:/configs/auth_config.yml
+      - ./users/config.yml:/configs/users_config.yml
+    depends_on:
+      - consul
+    networks:
+      - consul_init
+
+  vault:
+    image: vault
+    ports:
+      - "8200:8200"
+    cap_add:
+      - IPC_LOCK
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=myroot
+      - VAULT_TOKEN=myroot
+      - VAULT_API_ADDR=http://localhost:8200
+      - VAULT_ADDR=http://localhost:8200
+    networks:
+      - vault_init
+
+  vault_init:
+    image: vault
+    depends_on:
+      - vault
+    restart: on-failure
+    environment:
+      - VAULT_TOKEN=myroot
+      - VAULT_API_ADDR=http://vault:8200
+      - VAULT_ADDR=http://vault:8200
+    volumes:
+      - ./init/vault/policies/users-policy.hcl:/policies/users-policy.hcl:ro
+    command: sh -c "vault policy write users-policy /policies/users-policy.hcl && vault token create -policy=users-policy -id users-token"
+    networks:
+      - vault_init
+
+networks:
+  vault_init:
+    driver: bridge
+  consul_init:
+    driver: bridge
