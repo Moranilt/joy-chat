@@ -35,18 +35,21 @@ services:
       - "8500:8500"
       - "8600:8600/udp"
     volumes:
-      - ./auth/config.yml:/configs/auth_config.yml
-      - ./users/config.yml:/configs/users_config.yml
       - ./init/consul:/consul/config
     networks:
       - consul_init
   
   consul_init:
     image: consul
-    entrypoint: sh -c "consul kv put -http-addr=http://consul:8500 authentication/v1.0.0/config.yaml @/configs/auth_config.yml && consul kv put -http-addr=http://consul:8500 users/v1.0.0/config.yaml @/configs/users_config.yml"
+    restart: on-failure
+    entrypoint: >
+     sh -c "consul kv put -http-addr=http://consul:8500 authentication/v1.0.0/config.yaml @/configs/auth_config.yml &&
+      consul kv put -http-addr=http://consul:8500 users/v1.0.0/config.yaml @/configs/users_config.yml &&
+      consul kv put -http-addr=http://consul:8500 middleware/config.yaml @/configs/mw_config.yml"
     volumes:
       - ./auth/config.yml:/configs/auth_config.yml
       - ./users/config.yml:/configs/users_config.yml
+      - ./middleware/config.yml:/configs/mw_config.yml
     depends_on:
       - consul
     networks:
@@ -77,7 +80,12 @@ services:
       - VAULT_ADDR=http://vault:8200
     volumes:
       - ./init/vault/policies/users-policy.hcl:/policies/users-policy.hcl:ro
-    command: sh -c "vault policy write users-policy /policies/users-policy.hcl && vault token create -policy=users-policy -id users-token"
+      - ./init/vault/policies/mw-policy.hcl:/policies/mw-policy.hcl:ro
+    command: >
+     sh -c "vault policy write users-policy /policies/users-policy.hcl &&
+      vault token create -policy=users-policy -id users-token &&
+      vault policy write mw-policy /policies/mw-policy.hcl &&
+      vault token create -policy=mw-policy -id mw-token"
     networks:
       - vault_init
 

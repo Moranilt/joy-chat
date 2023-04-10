@@ -14,5 +14,4 @@ type TokenUserData struct {
 
 type ContextAuthData struct {
 	UserId string `json:"user_id"`
-	RoleId int    `json:"role_id"`
 }

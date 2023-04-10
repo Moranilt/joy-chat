@@ -367,7 +367,7 @@ func main() {
 	secure.HandleFunc("/change-password", server.ChangePassword).Methods(http.MethodPut)
 
 	admin := router.PathPrefix("/admin").Subrouter().StrictSlash(true)
-	admin.Use(server.authMiddleware, server.adminMiddleware)
+	admin.Use(server.authMiddleware)
 	admin.HandleFunc("/users", server.AdminUsers).Methods(http.MethodGet)
 	admin.HandleFunc("/users/{uuid}", server.AdminUserByUUID).Methods(http.MethodGet)
 	admin.HandleFunc("/users/{uuid}", server.AdminUpdateUser).Methods(http.MethodPatch)
@@ -379,32 +379,6 @@ func main() {
 	router.HandleFunc("/refresh", server.Refresh).Methods(http.MethodPut)
 
 	log.Fatal(http.ListenAndServe(":"+envCfg.Port, router))
-}
-
-func (s *Server) adminMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		accessToken, err := ExtractAccessToken(r.Header)
-		if err != nil {
-			log.Println(err)
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		data, err := ParseJWTClaims(accessToken, s.publicKey)
-		if err != nil {
-			log.Println(err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
-		if data.RoleId != ROLE_ADMIN {
-			log.Println(err)
-			w.WriteHeader(http.StatusForbidden)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
@@ -426,16 +400,8 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		data, err := ParseJWTClaims(accessToken, s.publicKey)
-		if err != nil {
-			log.Println(err)
-			w.WriteHeader(http.StatusBadRequest)
-			return
-		}
-
 		newCtx, err := MakeAuthCtx(r.Context(), ContextAuthData{
 			UserId: *userId,
-			RoleId: data.RoleId,
 		})
 		if err != nil {
 			log.Println(err)

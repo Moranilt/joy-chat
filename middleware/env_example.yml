@@ -1,0 +1,10 @@
+vault:
+  scheme: http
+  host: localhost:8200
+  token: mw-token
+  mount_path: secret
+  public_key_path: crt/auth/public
+port: 8060
+consul:
+  host: localhost:8500
+  key: middleware/config.yaml

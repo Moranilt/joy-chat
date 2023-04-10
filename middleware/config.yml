@@ -1,0 +1,35 @@
+hosts:
+  - hostname: http://localhost:8082
+    prefix: /users
+    endpoints:
+      - pattern: /user/
+        methods: [GET, PATCH, DELETE]
+        authentication: true
+        headers_required: ["X-Access-Token"]
+      - pattern: /change-password
+        methods: [PUT]
+        authentication: true
+        headers_required: ["X-Access-Token"]
+      - pattern: /admin/users
+        methods: [GET, DELETE]
+        authentication: true
+        roles: [3]
+        headers_required: ["X-Access-Token"]
+      - pattern: "/admin/users/{id}"
+        methods: [GET, PATCH]
+        authentication: true
+        roles: [3]
+        headers_required: ["X-Access-Token"]
+      - pattern: /refresh
+        methods: [PUT]
+        headers_required: ["X-Refresh-Token"]
+      - pattern: /logout
+        methods: [DELETE]
+        authentication: true
+        headers_required: ["X-Refresh-Token"]
+      - pattern: /sign-in
+        methods: [POST]
+      - pattern: /sign-up
+        methods: [POST]
+
+  
