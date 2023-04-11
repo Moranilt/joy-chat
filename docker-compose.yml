@@ -81,11 +81,14 @@ services:
     volumes:
       - ./init/vault/policies/users-policy.hcl:/policies/users-policy.hcl:ro
       - ./init/vault/policies/mw-policy.hcl:/policies/mw-policy.hcl:ro
+      - ./init/vault/policies/chats-policy.hcl:/policies/chats-policy.hcl:ro
     command: >
      sh -c "vault policy write users-policy /policies/users-policy.hcl &&
       vault token create -policy=users-policy -id users-token &&
       vault policy write mw-policy /policies/mw-policy.hcl &&
-      vault token create -policy=mw-policy -id mw-token"
+      vault token create -policy=mw-policy -id mw-token &&
+      vault policy write chats-policy /policies/chats-policy.hcl &&
+      vault token create -policy=chats-policy -id chats-token"
     networks:
       - vault_init
 
