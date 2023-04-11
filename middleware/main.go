@@ -2,15 +2,33 @@ package main
 
 import (
 	"log"
-	"net/http"
-	"net/url"
+	"strings"
 	"time"
 
+	"net/http"
+	"net/url"
+
 	"github.com/Moranilt/joy-chat/middleware/config"
+	"github.com/Moranilt/joy-chat/middleware/keys"
 	"github.com/gorilla/mux"
+	vault "github.com/hashicorp/vault/api"
 )
 
-func MakeHandlers(hosts []config.Host, publicKey []byte) *mux.Router {
+type Server struct {
+	keysController *keys.Keys
+	vaultClient    *vault.Client
+	vaultCfg       *config.VaultConfig
+}
+
+func NewServer(kc *keys.Keys, vc *vault.Client, vaultCfg *config.VaultConfig) *Server {
+	return &Server{
+		keysController: kc,
+		vaultClient:    vc,
+		vaultCfg:       vaultCfg,
+	}
+}
+
+func (s *Server) MakeHandlers(hosts []config.Host, publicKey []byte) *mux.Router {
 	client := http.Client{
 		Timeout: 15 * time.Second,
 	}
@@ -22,13 +40,22 @@ func MakeHandlers(hosts []config.Host, publicKey []byte) *mux.Router {
 			log.Fatal("not valid hostname: ", err)
 		}
 		for _, endpoint := range host.Endpoints {
-			handleFunc := makeHandlerFunc(&client, *urlHost, endpoint.Pattern)
-			middleware := []mux.MiddlewareFunc{
-				makeHeadersMiddleware(endpoint.HeadersRequired),
+			handleFunc := s.makeHandlerFunc(&client, *urlHost, endpoint.Pattern)
+
+			var middleware []mux.MiddlewareFunc
+
+			if len(endpoint.HeadersRequired) > 0 {
+				middleware = append(middleware, s.makeHeadersMiddleware(endpoint.HeadersRequired))
 			}
+
 			if endpoint.Authentication {
 				middleware = append(middleware, makeAuthMiddleware(endpoint.Roles, publicKey))
 			}
+
+			if endpoint.MwToken {
+				middleware = append(middleware, s.makeMWTokenMiddleware())
+			}
+
 			subrouter := prefixRoute.Methods(endpoint.Methods...).Subrouter()
 			subrouter.HandleFunc(endpoint.Pattern, handleFunc)
 			subrouter.Use(middleware...)
@@ -38,64 +65,24 @@ func MakeHandlers(hosts []config.Host, publicKey []byte) *mux.Router {
 	return router
 }
 
-func makeHandlerFunc(client *http.Client, host url.URL, endpoint string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		err := sendRequest(client, w, r, host, endpoint, r.Method, r.Body)
-		if err != nil {
-			log.Println(err)
-		}
+func (s *Server) GenerateKey(w http.ResponseWriter, r *http.Request) {
+	serviceName := r.URL.Query().Get("service_name")
+	if serviceName == "" {
+		http.Error(w, "provide 'service_name' query param", http.StatusBadRequest)
+		return
 	}
-}
 
-func makeHeadersMiddleware(headers []string) mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			for _, header := range headers {
-				exists := r.Header.Get(header)
-				if exists == "" {
-					w.WriteHeader(http.StatusNotAcceptable)
-					return
-				}
-			}
-
-			next.ServeHTTP(w, r)
-		})
+	newKey := s.keysController.Sign(serviceName)
+	filePath := strings.Join([]string{s.vaultCfg.TokensStore, serviceName}, "/")
+	data := map[string]any{
+		"token": newKey,
 	}
-}
-
-func makeAuthMiddleware(roles []int, publicKey []byte) mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			accessToken, err := ExtractAccessToken(r.Header)
-			if err != nil {
-				log.Println(err)
-				w.WriteHeader(http.StatusUnauthorized)
-				return
-			}
-
-			data, err := ParseJWTClaims(accessToken, publicKey)
-			if err != nil {
-				log.Println(err)
-				http.Error(w, "not valid token", http.StatusBadRequest)
-				return
-			}
-
-			if len(roles) == 0 {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			for _, role := range roles {
-				if data.RoleId == role {
-					next.ServeHTTP(w, r)
-					return
-				}
-			}
-
-			log.Println(err)
-			w.WriteHeader(http.StatusForbidden)
-		})
+	_, err := s.vaultClient.KVv2(s.vaultCfg.MountPath).Put(r.Context(), filePath, data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+	w.WriteHeader(http.StatusCreated)
 }
 
 func main() {
@@ -115,12 +102,33 @@ func main() {
 		log.Fatal(err)
 	}
 
-	publicKey, err := config.VaultPublicKey(vaultClient, &env.Vault)
+	publicAuthKey, err := config.VaultAuthPublicKey(vaultClient, &env.Vault)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	router := MakeHandlers(cfg.Hosts, publicKey)
+	keysController := keys.NewKeys(vaultClient, &env.Vault)
+	if env.GenerateKeys {
+		err := keysController.GenerateKeys(keys.DEFAULT_BIT_SIZE)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		err = keysController.StoreToVault()
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		err := keysController.GetFromVault()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	server := NewServer(keysController, vaultClient, &env.Vault)
+
+	router := server.MakeHandlers(cfg.Hosts, publicAuthKey)
+	router.HandleFunc("/key", server.GenerateKey).Methods(http.MethodGet)
 
 	log.Fatal(http.ListenAndServe(":"+env.Port, router))
 }

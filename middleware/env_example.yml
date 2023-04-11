@@ -3,8 +3,15 @@ vault:
   host: localhost:8200
   token: mw-token
   mount_path: secret
-  public_key_path: crt/auth/public
+  auth:
+    public_key_path: crt/auth/public
+  crt_store:
+    public_key_path: mw/crt/public
+    private_key_path: mw/crt/private
+  tokens_store: mw/tokens
+  
 port: 8060
 consul:
   host: localhost:8500
   key: middleware/config.yaml
+generate_keys: true
