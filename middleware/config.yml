@@ -31,5 +31,14 @@ hosts:
         methods: [POST]
       - pattern: /sign-up
         methods: [POST]
+  - hostname: http://localhost:8082
+    prefix: /mw
+    endpoints:
+      - pattern: /admin/users
+        mw_token: true
+        methods: [GET, DELETE]
+      - pattern: "/admin/users/{id}"
+        mw_token: true
+        methods: [GET, PATCH]
 
   

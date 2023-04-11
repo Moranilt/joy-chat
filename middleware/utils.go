@@ -10,11 +10,14 @@ import (
 	"net/url"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/gorilla/mux"
 )
 
 const (
-	HEADER_REFRESH = "X-Refresh-Token"
-	HEADER_ACCESS  = "X-Access-Token"
+	HEADER_REFRESH      = "X-Refresh-Token"
+	HEADER_ACCESS       = "X-Access-Token"
+	HEADER_MW_TOKEN     = "X-MW-Token"
+	HEADER_SERVICE_NAME = "X-Service-Name"
 )
 
 type TokenUserData struct {
@@ -107,4 +110,87 @@ func sendRequest(client *http.Client, w http.ResponseWriter, r *http.Request, ho
 	w.Write(b)
 
 	return nil
+}
+
+func (s *Server) makeHandlerFunc(client *http.Client, host url.URL, endpoint string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := sendRequest(client, w, r, host, endpoint, r.Method, r.Body)
+		if err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func (s *Server) makeMWTokenMiddleware() mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := r.Header.Get(HEADER_MW_TOKEN)
+			if token == "" {
+				http.Error(w, fmt.Sprintf("provide %q header", HEADER_MW_TOKEN), http.StatusForbidden)
+				return
+			}
+			serviceName := r.Header.Get(HEADER_SERVICE_NAME)
+			if serviceName == "" {
+				http.Error(w, fmt.Sprintf("provide %q header", HEADER_SERVICE_NAME), http.StatusForbidden)
+				return
+			}
+			err := s.keysController.Validate(token, serviceName)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func (s *Server) makeHeadersMiddleware(headers []string) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			for _, header := range headers {
+				exists := r.Header.Get(header)
+				if exists == "" {
+					w.WriteHeader(http.StatusNotAcceptable)
+					return
+				}
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func makeAuthMiddleware(roles []int, publicKey []byte) mux.MiddlewareFunc {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			accessToken, err := ExtractAccessToken(r.Header)
+			if err != nil {
+				log.Println(err)
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			data, err := ParseJWTClaims(accessToken, publicKey)
+			if err != nil {
+				log.Println(err)
+				http.Error(w, "not valid token", http.StatusBadRequest)
+				return
+			}
+
+			if len(roles) == 0 {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			for _, role := range roles {
+				if data.RoleId == role {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
+			log.Println(err)
+			w.WriteHeader(http.StatusForbidden)
+		})
+	}
 }

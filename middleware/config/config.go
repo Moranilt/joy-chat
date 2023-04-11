@@ -14,14 +14,18 @@ import (
 )
 
 const (
-	ENV_PORT                  = "PORT"
-	ENV_CONSUL_HOST           = "CONSUL_HOST"
-	ENV_CONSUL_KEY            = "CONSUL_KEY"
-	ENV_VAULT_SCHEME          = "VAULT_SCHEME"
-	ENV_VAULT_HOST            = "VAULT_HOST"
-	ENV_VAULT_TOKEN           = "VAULT_TOKEN"
-	ENV_VAULT_MOUNT_PATH      = "VAULT_MOUNT_PATH"
-	ENV_VAULT_PUBLIC_KEY_PATH = "VAULT_PUBLIC_KEY_PATH"
+	ENV_PORT                       = "PORT"
+	ENV_CONSUL_HOST                = "CONSUL_HOST"
+	ENV_CONSUL_KEY                 = "CONSUL_KEY"
+	ENV_VAULT_SCHEME               = "VAULT_SCHEME"
+	ENV_VAULT_HOST                 = "VAULT_HOST"
+	ENV_VAULT_TOKEN                = "VAULT_TOKEN"
+	ENV_VAULT_MOUNT_PATH           = "VAULT_MOUNT_PATH"
+	ENV_VAULT_AUTH_PUBLIC_KEY_PATH = "VAULT_AUTH_PUBLIC_KEY_PATH"
+	ENV_VAULT_CRT_PUBLIC_KEY_PATH  = "VAULT_CRT_PUBLIC_KEY_PATH"
+	ENV_VAULT_CRT_PRIVATE_KEY_PATH = "VAULT_CRT_PRIVATE_KEY_PATH"
+	ENV_GENERATE_KEYS              = "GENERATE_KEYS"
+	ENV_VAULT_TOKENS_STORE         = "VAULT_TOKENS_STORE"
 )
 
 func ReadEnv() (*EnvConfig, error) {
@@ -47,13 +51,21 @@ func ReadEnv() (*EnvConfig, error) {
 				Key:  viper.GetString(ENV_CONSUL_KEY),
 			},
 			Vault: VaultConfig{
-				Scheme:        viper.GetString(ENV_VAULT_SCHEME),
-				Host:          viper.GetString(ENV_VAULT_HOST),
-				Token:         viper.GetString(ENV_VAULT_TOKEN),
-				MountPath:     viper.GetString(ENV_VAULT_MOUNT_PATH),
-				PublicKeyPath: viper.GetString(ENV_VAULT_PUBLIC_KEY_PATH),
+				Scheme:    viper.GetString(ENV_VAULT_SCHEME),
+				Host:      viper.GetString(ENV_VAULT_HOST),
+				Token:     viper.GetString(ENV_VAULT_TOKEN),
+				MountPath: viper.GetString(ENV_VAULT_MOUNT_PATH),
+				Auth: VaultAuth{
+					PublicKeyPath: viper.GetString(ENV_VAULT_AUTH_PUBLIC_KEY_PATH),
+				},
+				CrtStore: VaultCrtStore{
+					PublicKeyPath:  viper.GetString(ENV_VAULT_CRT_PUBLIC_KEY_PATH),
+					PrivateKeyPath: viper.GetString(ENV_VAULT_CRT_PRIVATE_KEY_PATH),
+				},
+				TokensStore: viper.GetString(ENV_VAULT_TOKENS_STORE),
 			},
-			Port: viper.GetString(ENV_PORT),
+			Port:         viper.GetString(ENV_PORT),
+			GenerateKeys: viper.GetBool(ENV_GENERATE_KEYS),
 		}
 	}
 
@@ -71,13 +83,14 @@ func ReadConsulConfig(env *ConsulConfig) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	var cfg Config
-	err = viper.Unmarshal(&cfg)
+
+	cfg := new(Config)
+	err = viper.Unmarshal(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	return &cfg, nil
+	return cfg, nil
 }
 
 func NewVaultClient(env *VaultConfig) (*vault.Client, error) {
@@ -97,11 +110,11 @@ func NewVaultClient(env *VaultConfig) (*vault.Client, error) {
 	return client, nil
 }
 
-func VaultPublicKey(vc *vault.Client, env *VaultConfig) ([]byte, error) {
+func VaultAuthPublicKey(vc *vault.Client, env *VaultConfig) ([]byte, error) {
 	kv := vc.KVv2(env.MountPath)
 	publicCert, err := kv.Get(
 		context.Background(),
-		env.PublicKeyPath,
+		env.Auth.PublicKeyPath,
 	)
 	if err != nil {
 		return nil, err

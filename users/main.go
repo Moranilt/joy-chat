@@ -367,7 +367,6 @@ func main() {
 	secure.HandleFunc("/change-password", server.ChangePassword).Methods(http.MethodPut)
 
 	admin := router.PathPrefix("/admin").Subrouter().StrictSlash(true)
-	admin.Use(server.authMiddleware)
 	admin.HandleFunc("/users", server.AdminUsers).Methods(http.MethodGet)
 	admin.HandleFunc("/users/{uuid}", server.AdminUserByUUID).Methods(http.MethodGet)
 	admin.HandleFunc("/users/{uuid}", server.AdminUpdateUser).Methods(http.MethodPatch)
