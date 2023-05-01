@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
@@ -114,6 +115,10 @@ func sendRequest(client *http.Client, w http.ResponseWriter, r *http.Request, ho
 
 func (s *Server) makeHandlerFunc(client *http.Client, host url.URL, endpoint string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		for key, value := range vars {
+			endpoint = strings.Replace(endpoint, fmt.Sprintf("{%s}", key), value, 1)
+		}
 		err := sendRequest(client, w, r, host, endpoint, r.Method, r.Body)
 		if err != nil {
 			log.Println(err)
